@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   ArrowLeft,
   Clock,
@@ -11,12 +12,18 @@ import {
   QrCode,
   RefreshCw,
   ShoppingBag,
+  Image,
+  Calendar,
 } from 'lucide-react';
 import { Order } from '@/types/menu';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<{
+    image: string;
+    name: string;
+  } | null>(null);
 
   const loadOrders = () => {
     const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
@@ -25,7 +32,6 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadOrders();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(loadOrders, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -36,6 +42,34 @@ const Dashboard: React.FC = () => {
     );
     setOrders(updatedOrders);
     localStorage.setItem('orders', JSON.stringify(updatedOrders.reverse()));
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isToday = date.toDateString() === today.toDateString();
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const timeStr = date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    if (isToday) {
+      return `Today at ${timeStr}`;
+    } else if (isYesterday) {
+      return `Yesterday at ${timeStr}`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }) + ` at ${timeStr}`;
+    }
   };
 
   const pendingOrders = orders.filter((o) => o.paymentStatus === 'pending');
@@ -170,6 +204,12 @@ const Dashboard: React.FC = () => {
                   </CardHeader>
                   <CardContent className="py-4">
                     <div className="space-y-3">
+                      {/* Order Date */}
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-4 w-4" />
+                        <span>{formatDate(order.createdAt)}</span>
+                      </div>
+
                       <div className="text-sm text-muted-foreground">
                         📞 {order.phoneNumber}
                       </div>
@@ -177,6 +217,32 @@ const Dashboard: React.FC = () => {
                       {order.description && (
                         <div className="text-sm bg-muted/50 p-2 rounded">
                           📝 {order.description}
+                        </div>
+                      )}
+
+                      {/* Payment Screenshot */}
+                      {order.paymentScreenshot && (
+                        <div className="bg-success/10 p-3 rounded-lg border border-success/20">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Image className="h-4 w-4 text-success" />
+                              <span className="text-sm font-medium text-success">
+                                Payment proof from: {order.paymentScreenshotName}
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setSelectedScreenshot({
+                                  image: order.paymentScreenshot!,
+                                  name: order.paymentScreenshotName || 'Customer',
+                                })
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -223,6 +289,22 @@ const Dashboard: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Screenshot Modal */}
+      <Dialog open={!!selectedScreenshot} onOpenChange={() => setSelectedScreenshot(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Payment Screenshot - {selectedScreenshot?.name}</DialogTitle>
+          </DialogHeader>
+          {selectedScreenshot && (
+            <img
+              src={selectedScreenshot.image}
+              alt="Payment screenshot"
+              className="w-full rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

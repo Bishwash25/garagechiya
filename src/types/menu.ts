@@ -23,5 +23,7 @@ export interface Order {
   paymentMethod: 'cash' | 'online';
   paymentStatus: 'pending' | 'completed';
   orderStatus: 'pending' | 'preparing' | 'ready' | 'completed';
-  createdAt: Date;
+  createdAt: string;
+  paymentScreenshot?: string;
+  paymentScreenshotName?: string;
 }

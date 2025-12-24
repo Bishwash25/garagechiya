@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Banknote, QrCode, CheckCircle, Clock } from 'lucide-react';
+import { Banknote, QrCode, CheckCircle, Clock, Upload, Image } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface OrderFormProps {
@@ -13,7 +13,7 @@ interface OrderFormProps {
   onClose: () => void;
 }
 
-type Step = 'form' | 'payment' | 'success';
+type Step = 'form' | 'payment' | 'screenshot' | 'success';
 
 const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
   const { cart, getTotalAmount, clearCart } = useCart();
@@ -25,6 +25,10 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
     description: '',
   });
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online' | null>(null);
+  const [screenshotData, setScreenshotData] = useState({
+    name: '',
+    screenshot: '',
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,21 +46,61 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
   const handlePaymentSelect = (method: 'cash' | 'online') => {
     setPaymentMethod(method);
     
-    // Here you would typically save the order to the database
+    if (method === 'online') {
+      setStep('screenshot');
+    } else {
+      saveOrder(method, 'pending');
+    }
+  };
+
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setScreenshotData(prev => ({
+          ...prev,
+          screenshot: reader.result as string,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleScreenshotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!screenshotData.name || !screenshotData.screenshot) {
+      toast({
+        title: "Missing information",
+        description: "Please enter your name and upload payment screenshot",
+        variant: "destructive",
+      });
+      return;
+    }
+    saveOrder('online', 'completed', screenshotData.screenshot, screenshotData.name);
+  };
+
+  const saveOrder = (
+    method: 'cash' | 'online',
+    status: 'pending' | 'completed',
+    screenshot?: string,
+    screenshotName?: string
+  ) => {
     const order = {
+      id: Date.now().toString(),
       ...formData,
       items: cart,
       totalAmount: getTotalAmount(),
       paymentMethod: method,
-      paymentStatus: method === 'cash' ? 'pending' : 'pending',
-      createdAt: new Date(),
+      paymentStatus: status,
+      orderStatus: 'pending' as const,
+      createdAt: new Date().toISOString(),
+      ...(screenshot && { paymentScreenshot: screenshot }),
+      ...(screenshotName && { paymentScreenshotName: screenshotName }),
     };
     
-    console.log('Order created:', order);
-    
-    // For now, store in localStorage (will be replaced with database)
     const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-    orders.push({ ...order, id: Date.now().toString() });
+    orders.push(order);
     localStorage.setItem('orders', JSON.stringify(orders));
     
     setStep('success');
@@ -67,16 +111,18 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
     setStep('form');
     setFormData({ tableNumber: '', customerName: '', phoneNumber: '', description: '' });
     setPaymentMethod(null);
+    setScreenshotData({ name: '', screenshot: '' });
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
             {step === 'form' && 'Complete Your Order'}
             {step === 'payment' && 'Select Payment Method'}
+            {step === 'screenshot' && 'Upload Payment Proof'}
             {step === 'success' && 'Order Placed!'}
           </DialogTitle>
         </DialogHeader>
@@ -164,6 +210,78 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
           </div>
         )}
 
+        {step === 'screenshot' && (
+          <div className="space-y-4">
+            <div className="bg-muted p-4 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-2">Scan QR to Pay</p>
+              {/* 
+                TODO: Replace this with actual payment QR code
+                You can add your eSewa/Khalti/Bank QR code image here
+              */}
+              <div className="w-48 h-48 bg-card border-2 border-dashed border-border mx-auto flex items-center justify-center">
+                <p className="text-xs text-muted-foreground text-center p-2">
+                  [Payment QR Code will be displayed here]
+                </p>
+              </div>
+              <p className="mt-2 font-semibold text-center">Amount: रू {getTotalAmount()}</p>
+            </div>
+
+            <form onSubmit={handleScreenshotSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="payerName">Your Name *</Label>
+                <Input
+                  id="payerName"
+                  placeholder="Enter the name used for payment"
+                  value={screenshotData.name}
+                  onChange={(e) => setScreenshotData({ ...screenshotData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="screenshot">Payment Screenshot *</Label>
+                <div className="mt-2">
+                  {screenshotData.screenshot ? (
+                    <div className="relative">
+                      <img
+                        src={screenshotData.screenshot}
+                        alt="Payment screenshot"
+                        className="w-full max-h-48 object-contain rounded-lg border"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="absolute top-2 right-2"
+                        onClick={() => setScreenshotData({ ...screenshotData, screenshot: '' })}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                      <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                      <span className="text-sm text-muted-foreground">Click to upload screenshot</span>
+                      <input
+                        type="file"
+                        id="screenshot"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleScreenshotUpload}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full" size="lg">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Confirm Payment
+              </Button>
+            </form>
+          </div>
+        )}
+
         {step === 'success' && (
           <div className="text-center py-4 space-y-4">
             {paymentMethod === 'cash' ? (
@@ -179,22 +297,12 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
             ) : (
               <>
                 <div className="w-20 h-20 bg-success/20 rounded-full flex items-center justify-center mx-auto">
-                  <QrCode className="h-10 w-10 text-success" />
+                  <CheckCircle className="h-10 w-10 text-success" />
                 </div>
-                <h3 className="text-xl font-semibold">Scan to Pay</h3>
-                {/* 
-                  TODO: Replace this with actual payment QR code
-                  You can add your eSewa/Khalti/Bank QR code image here
-                */}
-                <div className="bg-muted p-4 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Payment QR Code</p>
-                  <div className="w-48 h-48 bg-card border-2 border-dashed border-border mx-auto flex items-center justify-center">
-                    <p className="text-xs text-muted-foreground text-center p-2">
-                      [Payment QR Code will be displayed here]
-                    </p>
-                  </div>
-                  <p className="mt-2 font-semibold">Amount: रू {getTotalAmount()}</p>
-                </div>
+                <h3 className="text-xl font-semibold">Payment Confirmed!</h3>
+                <p className="text-muted-foreground">
+                  Your payment of रू {getTotalAmount()} has been submitted for verification.
+                </p>
               </>
             )}
             
