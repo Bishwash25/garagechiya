@@ -5,8 +5,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Banknote, QrCode, CheckCircle, Clock, Upload, Image } from 'lucide-react';
+import { Banknote, QrCode, CheckCircle, Clock, Upload, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { db, serverTimestamp } from '@/lib/firebase';
+import { addDoc, collection } from 'firebase/firestore';
 
 interface OrderFormProps {
   open: boolean;
@@ -18,6 +20,7 @@ type Step = 'form' | 'payment' | 'screenshot' | 'success';
 const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
   const { cart, getTotalAmount, clearCart } = useCart();
   const [step, setStep] = useState<Step>('form');
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     tableNumber: '',
     customerName: '',
@@ -80,31 +83,41 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
     saveOrder('online', 'completed', screenshotData.screenshot, screenshotData.name);
   };
 
-  const saveOrder = (
+  const saveOrder = async (
     method: 'cash' | 'online',
     status: 'pending' | 'completed',
     screenshot?: string,
     screenshotName?: string
   ) => {
-    const order = {
-      id: Date.now().toString(),
-      ...formData,
-      items: cart,
-      totalAmount: getTotalAmount(),
-      paymentMethod: method,
-      paymentStatus: status,
-      orderStatus: 'pending' as const,
-      createdAt: new Date().toISOString(),
-      ...(screenshot && { paymentScreenshot: screenshot }),
-      ...(screenshotName && { paymentScreenshotName: screenshotName }),
-    };
-    
-    const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-    orders.push(order);
-    localStorage.setItem('orders', JSON.stringify(orders));
-    
-    setStep('success');
-    clearCart();
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, 'orders'), {
+        tableNumber: formData.tableNumber,
+        customerName: formData.customerName,
+        phoneNumber: formData.phoneNumber,
+        description: formData.description,
+        items: cart,
+        totalAmount: getTotalAmount(),
+        paymentMethod: method,
+        paymentStatus: status,
+        orderStatus: 'pending',
+        createdAt: serverTimestamp(),
+        ...(screenshot && { paymentScreenshotUrl: screenshot }),
+        ...(screenshotName && { paymentScreenshotName: screenshotName }),
+      });
+
+      setStep('success');
+      clearCart();
+    } catch (error) {
+      toast({
+        title: "Could not place order",
+        description: "Please try again. If the issue persists, contact support.",
+        variant: "destructive",
+      });
+      console.error('Order save error', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -175,10 +188,10 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
             
             <div className="bg-secondary/50 p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Order Total</p>
-              <p className="text-2xl font-bold text-primary">रू {getTotalAmount()}</p>
+              <p className="text-2xl font-bold text-primary">Rs {getTotalAmount()}</p>
             </div>
             
-            <Button type="submit" className="w-full" size="lg">
+            <Button type="submit" className="w-full" size="lg" disabled={submitting}>
               Continue to Payment
             </Button>
           </form>
@@ -186,13 +199,14 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
 
         {step === 'payment' && (
           <div className="space-y-4">
-            <p className="text-muted-foreground">Total: <span className="font-bold text-primary">रू {getTotalAmount()}</span></p>
+            <p className="text-muted-foreground">Total: <span className="font-bold text-primary">Rs {getTotalAmount()}</span></p>
             
             <div className="grid gap-4">
               <Button
                 variant="outline"
                 className="h-20 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
                 onClick={() => handlePaymentSelect('cash')}
+                disabled={submitting}
               >
                 <Banknote className="h-6 w-6" />
                 <span>Pay with Cash</span>
@@ -202,6 +216,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 variant="outline"
                 className="h-20 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
                 onClick={() => handlePaymentSelect('online')}
+                disabled={submitting}
               >
                 <QrCode className="h-6 w-6" />
                 <span>Pay Online (QR)</span>
@@ -223,7 +238,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                   [Payment QR Code will be displayed here]
                 </p>
               </div>
-              <p className="mt-2 font-semibold text-center">Amount: रू {getTotalAmount()}</p>
+              <p className="mt-2 font-semibold text-center">Amount: Rs {getTotalAmount()}</p>
             </div>
 
             <form onSubmit={handleScreenshotSubmit} className="space-y-4">
@@ -274,9 +289,18 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" size="lg">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Confirm Payment
+              <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing payment...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Confirm Payment
+                  </>
+                )}
               </Button>
             </form>
           </div>
@@ -291,7 +315,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold">Payment Pending</h3>
                 <p className="text-muted-foreground">
-                  Please pay रू {getTotalAmount()} in cash when your order arrives.
+                  Please pay cash when your order arrives.
                 </p>
               </>
             ) : (
@@ -301,7 +325,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold">Payment Confirmed!</h3>
                 <p className="text-muted-foreground">
-                  Your payment of रू {getTotalAmount()} has been submitted for verification.
+                  Your payment has been submitted for verification.
                 </p>
               </>
             )}

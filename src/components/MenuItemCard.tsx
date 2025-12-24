@@ -18,6 +18,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
     toast({
       title: "Added to cart!",
       description: `${quantity}x ${item.name} added`,
+      duration: 1000,
     });
     setQuantity(1);
   };
@@ -31,7 +32,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
             <p className="text-sm text-muted-foreground">{item.nameNp}</p>
           )}
         </div>
-        <span className="text-primary font-bold text-lg">रू {item.price}</span>
+        <span className="text-primary font-bold text-lg">Rs {item.price}</span>
       </div>
       
       <div className="flex items-center justify-between mt-4">

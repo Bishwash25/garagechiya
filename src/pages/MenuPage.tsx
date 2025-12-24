@@ -35,7 +35,7 @@ const MenuContent: React.FC = () => {
                 <Coffee className="h-6 w-6" />
                 Our Menu
               </h1>
-              <p className="text-sm text-muted-foreground">Burger Chiya Pasal</p>
+              <p className="text-sm text-foreground">garage chiya</p>
             </div>
           </div>
 

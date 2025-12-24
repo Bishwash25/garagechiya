@@ -14,69 +14,78 @@ const Index: React.FC = () => {
   return (
     <main className="min-h-screen bg-background overflow-hidden">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="container flex items-center justify-between h-16">
-          <h1 className="font-display text-xl md:text-2xl font-bold text-primary">
-            Burger Chiya Pasal
-          </h1>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/dashboard')}
-            className="gap-2"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            <span className="hidden sm:inline">Dashboard</span>
-          </Button>
-        </div>
-      </header>
+     
 
       {/* Hero Section */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-4 pt-16">
-        <div className="text-center mb-8 animate-fade-in-up">
-          <h2 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-4">
-            Burger Chiya Pasal
-          </h2>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-md mx-auto">
-            बर्गर चिया पसल
-          </p>
-          <p className="text-base text-muted-foreground mt-2">
-            Fresh Tea, Delicious Food, Great Vibes
-          </p>
+      <section className="min-h-screen relative flex flex-col items-center justify-center px-4 pt-12">
+        {/* Animated Background */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {/* Soft glowing blobs */}
+          <div className="absolute -top-10 -left-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute top-1/3 -right-16 w-40 h-40 bg-accent/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-10 left-1/4 w-32 h-32 bg-primary/5 rounded-full blur-2xl animate-pulse" />
+
+          {/* Floating tea & food icons */}
+          <div className="absolute bottom-16 left-10 text-6xl opacity-20 animate-bounce">
+            ☕
+          </div>
+          <div className="absolute top-16 right-12 text-6xl opacity-20 animate-bounce">
+            🍔
+          </div>
+          <div className="absolute top-12 left-14 text-6xl opacity-15 animate-bounce animation-delay-200">
+            🍔
+          </div>
+          <div className="absolute bottom-12 right-16 text-6xl opacity-15 animate-bounce animation-delay-300">
+            ☕
+          </div>
         </div>
 
-        {/* Tea Cup Animation */}
-        <div className="mb-12 animate-fade-in-up animation-delay-200">
-          <TeaCup />
-        </div>
+        {/* Foreground Content */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="text-center mb-8 animate-fade-in-up">
+            <h2 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-4">
+                Garage Chiya
+            </h2>
+            <p className="text-lg md:text-xl text-foreground max-w-md mx-auto">
+            ग्यारेज चिया
+            </p>
+            <p className="text-base text-foreground mt-2">
+              Fresh Tea, Delicious Food, Great Vibes
+            </p>
+          </div>
 
-        {/* QR Code */}
-        <div className="animate-fade-in-up animation-delay-400 mb-8">
-          <QRCode url={menuUrl} />
-        </div>
+          {/* Tea Cup Animation */}
+          <div className="mb-12 animate-fade-in-up animation-delay-200">
+            <TeaCup />
+          </div>
 
-        {/* Direct Menu Button */}
-        <div className="animate-fade-in-up animation-delay-600 flex flex-col sm:flex-row gap-4">
-          <Button
-            onClick={() => navigate('/menu')}
-            size="xl"
-            variant="hero"
-            className="gap-2"
-          >
-            <Menu className="h-5 w-5" />
-            View Menu
-          </Button>
-        </div>
+          {/* QR Code */}
+          <div className="animate-fade-in-up animation-delay-400 mb-8">
+            <QRCode url={menuUrl} />
+          </div>
 
-        {/* Decorative Elements */}
-        <div className="absolute top-20 left-10 w-20 h-20 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-32 h-32 bg-accent/10 rounded-full blur-3xl" />
+          {/* Direct Menu Button */}
+          <div className="animate-fade-in-up animation-delay-600 flex flex-col items-center sm:flex-row gap-4">
+            <Button
+              onClick={() => navigate('/menu')}
+              size="xl"
+              variant="hero"
+              className="gap-2"
+            >
+              <Menu className="h-5 w-5" />
+              View Menu
+            </Button>
+          </div>
+
+          {/* Footer Text */}
+          <div className="mt-6 text-sm text-foreground animate-fade-in-up animation-delay-800 text-center">
+            <p>© 2025 Garage chiya • Made with ❤️</p>
+          </div>
+        </div>
       </section>
 
       {/* Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 py-4 text-center text-sm text-muted-foreground bg-background/80 backdrop-blur-md border-t border-border">
-        <p>© 2024 Burger Chiya Pasal • Made with ❤️</p>
-      </footer>
+      
     </main>
   );
 };

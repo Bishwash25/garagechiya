@@ -38,7 +38,7 @@ const CartSheet: React.FC<CartSheetProps> = ({ onCheckout }) => {
                 <div key={item.id} className="flex items-center gap-4 bg-secondary/50 p-3 rounded-lg">
                   <div className="flex-1">
                     <h4 className="font-medium">{item.name}</h4>
-                    <p className="text-sm text-muted-foreground">रू {item.price} each</p>
+                    <p className="text-sm text-muted-foreground">Rs {item.price} each</p>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -79,7 +79,7 @@ const CartSheet: React.FC<CartSheetProps> = ({ onCheckout }) => {
           <div className="border-t pt-4 mt-4">
             <div className="flex justify-between items-center mb-4">
               <span className="text-lg font-semibold">Total:</span>
-              <span className="text-2xl font-bold text-primary">रू {getTotalAmount()}</span>
+              <span className="text-2xl font-bold text-primary">Rs {getTotalAmount()}</span>
             </div>
             <Button onClick={onCheckout} className="w-full" size="lg">
               Proceed to Order
