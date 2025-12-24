@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,8 @@ import {
   Calendar,
   Loader2,
   User as UserIcon,
+  Search,
+  Edit,
 } from 'lucide-react';
 import { Order } from '@/types/menu';
 import { auth, db, Timestamp } from '@/lib/firebase';
@@ -66,6 +68,7 @@ const Dashboard: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(
     () => new Date().toLocaleDateString('en-CA')
   );
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Watch Firebase Auth state
   useEffect(() => {
@@ -165,8 +168,16 @@ const Dashboard: React.FC = () => {
     .filter(Boolean)
     .sort((a, b) => (a < b ? 1 : -1));
 
-  const filteredOrders = orders.filter(
+  const dateFilteredOrders = orders.filter(
     (o) => getDateKey(o.createdAt) === selectedDate
+  );
+
+  const filteredOrders = dateFilteredOrders.filter((o) =>
+    searchQuery === '' ||
+    o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    o.tableNumber.toString().toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ('table ' + o.tableNumber.toString()).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    searchQuery.toLowerCase() === o.tableNumber.toString().toLowerCase()
   );
 
   const handleNewDayDashboard = () => {
@@ -196,11 +207,11 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const pendingOrders = filteredOrders.filter((o) => o.paymentStatus === 'pending');
-  const completedOrders = filteredOrders.filter((o) => o.paymentStatus === 'completed');
-  const cashOrders = filteredOrders.filter((o) => o.paymentMethod === 'cash');
-  const onlineOrders = filteredOrders.filter((o) => o.paymentMethod === 'online');
-  const totalRevenue = completedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const pendingOrders = useMemo(() => dateFilteredOrders.filter((o) => o.paymentStatus === 'pending'), [dateFilteredOrders]);
+  const completedOrders = useMemo(() => dateFilteredOrders.filter((o) => o.paymentStatus === 'completed'), [dateFilteredOrders]);
+  const cashOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'cash'), [filteredOrders]);
+  const onlineOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'online'), [filteredOrders]);
+  const totalRevenue = useMemo(() => completedOrders.reduce((sum, o) => sum + o.totalAmount, 0), [completedOrders]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -391,7 +402,7 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <div className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5 text-primary" />
-                <span className="text-3xl font-bold">{orders.length}</span>
+                <span className="text-3xl font-bold">{dateFilteredOrders.length}</span>
               </div>
             </CardContent>
           </Card>
@@ -427,7 +438,20 @@ const Dashboard: React.FC = () => {
 
         {/* Orders List */}
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-semibold">Orders</h2>
+          {/* Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 className="font-display text-xl font-semibold">Orders</h2>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by name or table number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
 
           {isLoading && orders.length === 0 ? (
             <Card>
@@ -540,15 +564,26 @@ const Dashboard: React.FC = () => {
                                 Total: Rs {order.totalAmount}
                               </div>
                               {order.paymentStatus === 'pending' && (
-                                <Button
-                                  size="sm"
-                                  variant="success"
-                                  onClick={() => updatePaymentStatus(order.id, 'completed')}
-                                  className="gap-1"
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                  Mark as Paid
-                                </Button>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => navigate(`/menu?orderId=${order.id}`)}
+                                    className="gap-1"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                    Update
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="success"
+                                    onClick={() => updatePaymentStatus(order.id, 'completed')}
+                                    className="gap-1"
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                    Mark as Paid
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -680,15 +715,26 @@ const Dashboard: React.FC = () => {
                                 Total: Rs {order.totalAmount}
                               </div>
                               {order.paymentStatus === 'pending' && (
-                                <Button
-                                  size="sm"
-                                  variant="success"
-                                  onClick={() => updatePaymentStatus(order.id, 'completed')}
-                                  className="gap-1"
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                  Mark as Paid
-                                </Button>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => navigate(`/menu?orderId=${order.id}`)}
+                                    className="gap-1"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                    Update
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="success"
+                                    onClick={() => updatePaymentStatus(order.id, 'completed')}
+                                    className="gap-1"
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                    Mark as Paid
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>

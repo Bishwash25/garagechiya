@@ -64,7 +64,7 @@ const Index: React.FC = () => {
             <QRCode url={menuUrl} />
           </div>
 
-          {/* Direct Menu Button */}
+          {/* QR Code */}
           <div className="animate-fade-in-up animation-delay-600 flex flex-col items-center sm:flex-row gap-4">
             <Button
               onClick={() => navigate('/menu')}
@@ -76,6 +76,7 @@ const Index: React.FC = () => {
               View Menu
             </Button>
           </div>
+          
 
           {/* Footer Text */}
           <div className="mt-6 text-sm text-foreground animate-fade-in-up animation-delay-800 text-center">

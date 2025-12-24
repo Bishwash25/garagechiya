@@ -16,7 +16,7 @@ const QRCode: React.FC<QRCodeProps> = ({ url }) => {
         className="w-48 h-48 md:w-56 md:h-56 rounded-lg"
       />
       <p className="text-center mt-3 text-sm font-medium text-muted-foreground">
-        Scan to Order
+        Scan QR For Menu
       </p>
     </div>
   );

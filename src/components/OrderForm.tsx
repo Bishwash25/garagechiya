@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCart } from '@/context/CartContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Banknote, QrCode, CheckCircle, Clock, Upload, Loader2 } from 'lucide-react';
@@ -35,7 +36,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.tableNumber || !formData.customerName || !formData.phoneNumber) {
+    if (!formData.tableNumber || !formData.customerName) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields",
@@ -144,13 +145,18 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="tableNumber">Table Number *</Label>
-              <Input
-                id="tableNumber"
-                placeholder="Enter table number"
-                value={formData.tableNumber}
-                onChange={(e) => setFormData({ ...formData, tableNumber: e.target.value })}
-                required
-              />
+              <Select value={formData.tableNumber} onValueChange={(value) => setFormData({ ...formData, tableNumber: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select table number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                    <SelectItem key={num} value={num.toString()}>
+                      Table {num}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div>
@@ -165,14 +171,14 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
             </div>
             
             <div>
-              <Label htmlFor="phoneNumber">Phone Number *</Label>
+              <Label htmlFor="phoneNumber">Phone Number (Optional)</Label>
               <Input
                 id="phoneNumber"
                 type="tel"
                 placeholder="Enter phone number"
                 value={formData.phoneNumber}
-                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                required
+                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                maxLength={10}
               />
             </div>
             
@@ -204,22 +210,22 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
             <div className="grid gap-4">
               <Button
                 variant="outline"
-                className="h-20 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
+                className="h-20 flex flex-col gap-2 "
                 onClick={() => handlePaymentSelect('cash')}
                 disabled={submitting}
               >
                 <Banknote className="h-6 w-6" />
-                <span>Pay with Cash</span>
+                <span>Pay After</span>
               </Button>
               
               <Button
                 variant="outline"
-                className="h-20 flex flex-col gap-2 hover:border-primary hover:bg-primary/5"
+                className="h-20 flex flex-col gap-2 "
                 onClick={() => handlePaymentSelect('online')}
                 disabled={submitting}
               >
                 <QrCode className="h-6 w-6" />
-                <span>Pay Online (QR)</span>
+                <span>Pay Before</span>
               </Button>
             </div>
           </div>
@@ -229,13 +235,14 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
           <div className="space-y-4">
             <div className="bg-muted p-4 rounded-lg">
               <p className="text-sm text-muted-foreground mb-2">Scan QR to Pay</p>
-              {/* 
-                TODO: Replace this with actual payment QR code
-                You can add your eSewa/Khalti/Bank QR code image here
-              */}
+               
               <div className="w-48 h-48 bg-card border-2 border-dashed border-border mx-auto flex items-center justify-center">
                 <p className="text-xs text-muted-foreground text-center p-2">
-                  [Payment QR Code will be displayed here]
+                  <img
+    src="/image/QR.jpeg"   // path to your QR image
+    alt="Payment QR Code"
+    className="mx-auto w-40 h-40 object-contain rounded-md"
+  />
                 </p>
               </div>
               <p className="mt-2 font-semibold text-center">Amount: Rs {getTotalAmount()}</p>
