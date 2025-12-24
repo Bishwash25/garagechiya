@@ -13,7 +13,7 @@ The project focuses on simplicity, speed, and a clean user experience.
 
 ---
 
-## 🛠️ Tech Stack
+# 🛠️ Tech Stack
 - Vite
 - React
 - TypeScript
