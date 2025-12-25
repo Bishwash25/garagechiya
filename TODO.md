@@ -1,0 +1,6 @@
+- [ ] Change from device-based to table-based cart sessions
+- [ ] Implement table-based cart sharing for legitimate group ordering
+- [ ] Add order validation and scam detection in dashboard
+- [ ] Update OrderForm to support table-based sessions
+- [ ] Add warnings for multiple orders from same table
+- [ ] Test legitimate sharing and scam prevention

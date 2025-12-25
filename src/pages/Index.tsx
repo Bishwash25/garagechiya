@@ -8,8 +8,8 @@ import { Menu, LayoutDashboard } from 'lucide-react';
 const Index: React.FC = () => {
   const navigate = useNavigate();
   const menuUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/menu` 
-    : '/menu';
+    ? `${window.location.origin}/menu?mode=customer` 
+    : '/menu?mode=customer';
 
   return (
     <main className="min-h-screen bg-background overflow-hidden">

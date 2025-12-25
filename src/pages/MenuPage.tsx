@@ -5,17 +5,55 @@ import MenuItemCard from '@/components/MenuItemCard';
 import CartSheet from '@/components/CartSheet';
 import OrderForm from '@/components/OrderForm';
 import { menuItems, categories } from '@/data/menuItems';
-import { CartProvider } from '@/context/CartContext';
+import { Order } from '@/types/menu';
+import type { CartItem } from '@/types/menu';
+import { CartProvider, useCart } from '@/context/CartContext';
 import { ArrowLeft, Coffee } from 'lucide-react';
 
 const MenuContent: React.FC = () => {
   const navigate = useNavigate();
+  const location = window.location;
+  const searchParams = new URLSearchParams(location.search);
+  const isCustomerMode = searchParams.get('mode') === 'customer';
+  const orderId = searchParams.get('orderId');
+
   const [activeCategory, setActiveCategory] = useState('All');
   const [showOrderForm, setShowOrderForm] = useState(false);
+  const [existingOrder, setExistingOrder] = useState<Partial<Order> | null>(null);
+  const { setCartItems } = useCart();
 
   const filteredItems = activeCategory === 'All'
     ? menuItems
     : menuItems.filter((item) => item.category === activeCategory);
+
+  // If orderId present, fetch that order and prefill cart with its items
+  React.useEffect(() => {
+    const fetchOrder = async () => {
+      if (!orderId) return;
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const docRef = doc((await import('@/lib/firebase')).db, 'orders', orderId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data() as Partial<Order>;
+          setExistingOrder({ id: snap.id, ...data });
+          // Prefill cart with existing items
+          if (data.items && Array.isArray(data.items)) {
+            setCartItems(data.items as CartItem[]);
+            // keep cart closed; admin will open and edit
+            setShowOrderForm(false);
+            const { toast } = await import('@/hooks/use-toast');
+            toast({ title: 'Update mode', description: 'Prefilled cart with existing order items. Add items and proceed to update.' });
+          }
+        }
+      } catch (err) {
+        console.error('Could not load order for update', err);
+      }
+    };
+
+    fetchOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -60,7 +98,7 @@ const MenuContent: React.FC = () => {
       <section className="container py-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredItems.map((item) => (
-            <MenuItemCard key={item.id} item={item} />
+            <MenuItemCard key={item.id} item={item} readOnly={isCustomerMode} />
           ))}
         </div>
 
@@ -72,10 +110,16 @@ const MenuContent: React.FC = () => {
       </section>
 
       {/* Cart Button */}
-      <CartSheet onCheckout={() => setShowOrderForm(true)} />
+      {!isCustomerMode && <CartSheet onCheckout={() => setShowOrderForm(true)} existingOrder={existingOrder} />}
 
       {/* Order Form Dialog */}
-      <OrderForm open={showOrderForm} onClose={() => setShowOrderForm(false)} />
+      {!isCustomerMode && (
+        <OrderForm
+          open={showOrderForm}
+          onClose={() => setShowOrderForm(false)}
+          existingOrder={existingOrder}
+        />
+      )}
     </div>
   );
 };

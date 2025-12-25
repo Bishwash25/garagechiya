@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,15 +95,21 @@ const Dashboard: React.FC = () => {
       q,
       (snapshot) => {
         const list = snapshot.docs.map((docSnap) => {
+          // Allow fallback typing from Firestore snapshot
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const data = docSnap.data() as any;
-          const createdAt = data.createdAt instanceof Timestamp
-            ? data.createdAt.toDate().toISOString()
+          const createdAt = data.createdAt && typeof (data.createdAt as any).toDate === 'function'
+            ? (data.createdAt as any).toDate().toISOString()
             : new Date().toISOString();
+          const updatedAt = data.updatedAt && typeof (data.updatedAt as any).toDate === 'function'
+            ? (data.updatedAt as any).toDate().toISOString()
+            : data.updatedAt ? new Date(data.updatedAt).toISOString() : undefined;
 
           return {
             id: docSnap.id,
             ...data,
             createdAt,
+            updatedAt,
           } as Order;
         });
         // Detect new orders (only after initial load)
@@ -209,9 +215,182 @@ const Dashboard: React.FC = () => {
 
   const pendingOrders = useMemo(() => dateFilteredOrders.filter((o) => o.paymentStatus === 'pending'), [dateFilteredOrders]);
   const completedOrders = useMemo(() => dateFilteredOrders.filter((o) => o.paymentStatus === 'completed'), [dateFilteredOrders]);
-  const cashOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'cash'), [filteredOrders]);
-  const onlineOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'online'), [filteredOrders]);
+
+  // Orders considered "new" if created within last 10 minutes or have been updated
+  const isNewOrUpdated = useCallback((o: Order) => {
+    if (o.updatedAt) return true;
+    try {
+      return Date.now() - new Date(o.createdAt).getTime() < 1000 * 60 * 10; // 10 minutes
+    } catch (e) {
+      return false;
+    }
+  }, []);
+
+  // Helper to sort: non-completed & new/updated first, then most recent createdAt. Completed orders go to bottom.
+  const sortByNewnessThenDate = useCallback((a: Order, b: Order) => {
+    const aDone = a.orderStatus === 'completed';
+    const bDone = b.orderStatus === 'completed';
+    if (aDone !== bDone) return aDone ? 1 : -1; // completed orders last
+
+    const na = isNewOrUpdated(a) ? 1 : 0;
+    const nb = isNewOrUpdated(b) ? 1 : 0;
+    if (nb !== na) return nb - na; // new/updated first
+
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  }, [isNewOrUpdated]);
+  // Combined list of active (non-completed) orders sorted by newness then time.
+  const allActiveOrders = useMemo(() => filteredOrders.filter((o) => o.orderStatus !== 'completed').sort(sortByNewnessThenDate), [filteredOrders, sortByNewnessThenDate]);
+
+  const cashOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'cash').sort(sortByNewnessThenDate), [filteredOrders, sortByNewnessThenDate]);
+  const onlineOrders = useMemo(() => filteredOrders.filter((o) => o.paymentMethod === 'online').sort(sortByNewnessThenDate), [filteredOrders, sortByNewnessThenDate]);
+
+  // Shared renderer to avoid duplication between sections
+  const renderOrderCard = (order: Order) => {
+    const isNew = isNewOrUpdated(order) && order.orderStatus !== 'completed';
+    const containerClass = `overflow-hidden ${isNew ? 'bg-destructive/10 border-l-4 border-destructive' : (order.orderStatus === 'completed' ? 'bg-success/10 border-l-4 border-success' : '')}`;
+
+    return (
+      <Card key={order.id} className={containerClass}>
+        <CardHeader className="bg-secondary/30 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="font-mono">
+                Table {order.tableNumber}
+              </Badge>
+              <span className="font-semibold">{order.customerName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {order.paymentMethod === 'cash' ? (
+                <Badge variant="secondary" className="gap-1">
+                  <Banknote className="h-3 w-3" />
+                  Cash
+                </Badge>
+              ) : (
+                <Badge variant="default" className="gap-1">
+                  <QrCode className="h-3 w-3" />
+                  Online
+                </Badge>
+              )}
+
+              <Badge
+                variant={order.paymentStatus === 'pending' ? 'destructive' : 'default'}
+                className={
+                  order.paymentStatus === 'completed'
+                    ? 'bg-success text-success-foreground'
+                    : ''
+                }
+              >
+                {order.paymentStatus === 'pending' ? (
+                  <Clock className="h-3 w-3 mr-1" />
+                ) : (
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                )}
+                {order.paymentStatus === 'pending' ? 'Pending' : 'Paid'}
+              </Badge>
+
+              {(() => {
+                const label = (order.updatedAt ? { text: 'Updated', variant: 'secondary' } : (Date.now() - new Date(order.createdAt).getTime() < 1000 * 60 * 10 ? { text: 'New Order', variant: 'destructive' } : null)) as { text: string; variant: 'secondary' | 'destructive' } | null;
+                return label ? (
+                  <Badge variant={label.variant} className="ml-2 font-mono">{label.text}</Badge>
+                ) : null;
+              })()}
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="py-4">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Calendar className="h-4 w-4" />
+              <span>{formatDate(order.createdAt)}</span>
+            </div>
+
+            <div className="text-sm text-foreground">📞 {order.phoneNumber}</div>
+
+            {order.description && (
+              <div className="text-sm bg-muted/50 p-2 rounded">📝 {order.description}</div>
+            )}
+
+            {order.paymentMethod === 'online' && order.paymentScreenshotUrl && (
+              <div className="bg-success/10 p-3 rounded-lg border border-success/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Image className="h-4 w-4 text-success" />
+                    <span className="text-sm font-medium text-success">Payment proof from: {order.paymentScreenshotName}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setSelectedScreenshot({ image: order.paymentScreenshotUrl!, name: order.paymentScreenshotName || 'Customer' })
+                    }
+                  >
+                    View
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium mb-2">Items:</p>
+              <div className="space-y-1">
+                {order.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-sm">
+                    <span>{item.quantity}x {item.name}</span>
+                    <span className="text-muted-foreground">Rs {item.price * item.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+              <div className="text-lg font-bold text-primary">Total: Rs {order.totalAmount}</div>
+
+              <div className="flex gap-2 items-center">
+                {order.paymentStatus === 'pending' && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/menu?orderId=${order.id}`)} className="gap-1">
+                      <Edit className="h-4 w-4" />
+                      Update
+                    </Button>
+                    <Button size="sm" variant="success" onClick={() => updatePaymentStatus(order.id, 'completed')} className="gap-1">
+                      <CheckCircle className="h-4 w-4" />
+                      Mark as Paid
+                    </Button>
+                  </>
+                )}
+
+                <Button
+                  size="sm"
+                  variant={order.orderStatus === 'completed' ? 'success' : 'destructive'}
+                  onClick={() => { if (order.orderStatus !== 'completed') markOrderDone(order.id); }}
+                  className="gap-1"
+                  disabled={order.orderStatus === 'completed'}
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  {order.orderStatus === 'completed' ? 'Done' : 'Order Done'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
   const totalRevenue = useMemo(() => completedOrders.reduce((sum, o) => sum + o.totalAmount, 0), [completedOrders]);
+
+  const markOrderDone = async (orderId: string) => {
+    const previous = orders;
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, orderStatus: 'completed' } : o)));
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { orderStatus: 'completed' });
+      toast({ title: 'Order completed', description: 'The order was marked as done.' });
+    } catch (error) {
+      setOrders(previous);
+      toast({ title: 'Could not mark order', description: 'Please check your Firestore rules and try again.', variant: 'destructive' });
+      console.error('markOrderDone error', error);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -469,6 +648,27 @@ const Dashboard: React.FC = () => {
             </Card>
           ) : (
             <div className="space-y-8">
+              {/* All Active Orders (mixed payment methods, newest first) */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+                    <ShoppingBag className="h-5 w-5 text-primary" />
+                    All Active Orders
+                  </h3>
+                  <span className="text-sm text-foreground">
+                    {allActiveOrders.length} order{allActiveOrders.length !== 1 && 's'}
+                  </span>
+                </div>
+
+                {allActiveOrders.length === 0 ? (
+                  <p className="text-sm text-foreground italic">No active orders.</p>
+                ) : (
+                  <div className="grid gap-4">
+                    {allActiveOrders.map((order) => renderOrderCard(order))}
+                  </div>
+                )}
+              </div>
+
               {/* Cash Orders Section */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -487,109 +687,7 @@ const Dashboard: React.FC = () => {
                   </p>
                 ) : (
                   <div className="grid gap-4">
-                    {cashOrders.map((order) => (
-                      <Card key={order.id} className="overflow-hidden">
-                        <CardHeader className="bg-secondary/30 py-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline" className="font-mono">
-                                Table {order.tableNumber}
-                              </Badge>
-                              <span className="font-semibold">{order.customerName}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant="secondary"
-                                className="gap-1"
-                              >
-                                <Banknote className="h-3 w-3" />
-                                Cash
-                              </Badge>
-                              <Badge
-                                variant={order.paymentStatus === 'pending' ? 'destructive' : 'default'}
-                                className={
-                                  order.paymentStatus === 'completed'
-                                    ? 'bg-success text-success-foreground'
-                                    : ''
-                                }
-                              >
-                                {order.paymentStatus === 'pending' ? (
-                                  <Clock className="h-3 w-3 mr-1" />
-                                ) : (
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                )}
-                                {order.paymentStatus === 'pending' ? 'Pending' : 'Paid'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="py-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2 text-sm text-foreground">
-                              <Calendar className="h-4 w-4" />
-                              <span>{formatDate(order.createdAt)}</span>
-                            </div>
-
-                            <div className="text-sm text-foreground">
-                              📞 {order.phoneNumber}
-                            </div>
-
-                            {order.description && (
-                              <div className="text-sm bg-muted/50 p-2 rounded">
-                                📝 {order.description}
-                              </div>
-                            )}
-
-                            <div className="border-t pt-3">
-                              <p className="text-sm font-medium mb-2">Items:</p>
-                              <div className="space-y-1">
-                                {order.items.map((item, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="flex justify-between text-sm"
-                                  >
-                                    <span>
-                                      {item.quantity}x {item.name}
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      Rs {item.price * item.quantity}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
-                              <div className="text-lg font-bold text-primary">
-                                Total: Rs {order.totalAmount}
-                              </div>
-                              {order.paymentStatus === 'pending' && (
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => navigate(`/menu?orderId=${order.id}`)}
-                                    className="gap-1"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Update
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="success"
-                                    onClick={() => updatePaymentStatus(order.id, 'completed')}
-                                    className="gap-1"
-                                  >
-                                    <CheckCircle className="h-4 w-4" />
-                                    Mark as Paid
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {cashOrders.map((order) => renderOrderCard(order))} 
                   </div>
                 )}
               </div>
@@ -612,135 +710,7 @@ const Dashboard: React.FC = () => {
                   </p>
                 ) : (
                   <div className="grid gap-4">
-                    {onlineOrders.map((order) => (
-                      <Card key={order.id} className="overflow-hidden">
-                        <CardHeader className="bg-secondary/30 py-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline" className="font-mono">
-                                Table {order.tableNumber}
-                              </Badge>
-                              <span className="font-semibold">{order.customerName}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant="default"
-                                className="gap-1"
-                              >
-                                <QrCode className="h-3 w-3" />
-                                Online
-                              </Badge>
-                              <Badge
-                                variant={order.paymentStatus === 'pending' ? 'destructive' : 'default'}
-                                className={
-                                  order.paymentStatus === 'completed'
-                                    ? 'bg-success text-success-foreground'
-                                    : ''
-                                }
-                              >
-                                {order.paymentStatus === 'pending' ? (
-                                  <Clock className="h-3 w-3 mr-1" />
-                                ) : (
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                )}
-                                {order.paymentStatus === 'pending' ? 'Pending' : 'Paid'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="py-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2 text-sm text-foreground">
-                              <Calendar className="h-4 w-4" />
-                              <span>{formatDate(order.createdAt)}</span>
-                            </div>
-
-                            <div className="text-sm text-foreground">
-                              📞 {order.phoneNumber}
-                            </div>
-
-                            {order.description && (
-                              <div className="text-sm bg-muted/50 p-2 rounded">
-                                📝 {order.description}
-                              </div>
-                            )}
-
-                            {/* Payment Screenshot */}
-                            {order.paymentScreenshotUrl && (
-                              <div className="bg-success/10 p-3 rounded-lg border border-success/20">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Image className="h-4 w-4 text-success" />
-                                    <span className="text-sm font-medium text-success">
-                                      Payment proof from: {order.paymentScreenshotName}
-                                    </span>
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      setSelectedScreenshot({
-                                        image: order.paymentScreenshotUrl!,
-                                        name: order.paymentScreenshotName || 'Customer',
-                                      })
-                                    }
-                                  >
-                                    View
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="border-t pt-3">
-                              <p className="text-sm font-medium mb-2">Items:</p>
-                              <div className="space-y-1">
-                                {order.items.map((item, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="flex justify-between text-sm"
-                                  >
-                                    <span>
-                                      {item.quantity}x {item.name}
-                                    </span>
-                                    <span className="text-foreground">
-                                      Rs {item.price * item.quantity}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
-                              <div className="text-lg font-bold text-primary">
-                                Total: Rs {order.totalAmount}
-                              </div>
-                              {order.paymentStatus === 'pending' && (
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => navigate(`/menu?orderId=${order.id}`)}
-                                    className="gap-1"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Update
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="success"
-                                    onClick={() => updatePaymentStatus(order.id, 'completed')}
-                                    className="gap-1"
-                                  >
-                                    <CheckCircle className="h-4 w-4" />
-                                    Mark as Paid
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {onlineOrders.map((order) => renderOrderCard(order))}
                   </div>
                 )}
               </div>

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useNavigate } from 'react-router-dom';
+import { updateDoc, doc } from 'firebase/firestore';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,14 +13,18 @@ import { toast } from '@/hooks/use-toast';
 import { db, serverTimestamp } from '@/lib/firebase';
 import { addDoc, collection } from 'firebase/firestore';
 
+import type { Order, CartItem } from '@/types/menu';
+
 interface OrderFormProps {
   open: boolean;
   onClose: () => void;
+  existingOrder?: Partial<Order> | null; // when present, we add items to the existing order (update flow)
 }
 
 type Step = 'form' | 'payment' | 'screenshot' | 'success';
 
-const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
+const OrderForm: React.FC<OrderFormProps> = ({ open, onClose, existingOrder = null }) => {
+  const navigate = useNavigate();
   const { cart, getTotalAmount, clearCart } = useCart();
   const [step, setStep] = useState<Step>('form');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +40,22 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
     screenshot: '',
   });
 
+  // Prefill details when updating an order
+  React.useEffect(() => {
+    if (existingOrder) {
+      setFormData({
+        tableNumber: existingOrder.tableNumber?.toString() || '',
+        customerName: existingOrder.customerName || '',
+        phoneNumber: existingOrder.phoneNumber || '',
+        description: existingOrder.description || '',
+      });
+      // Keep original payment method for reference
+      setPaymentMethod(existingOrder.paymentMethod || null);
+      // skip payment steps for update flow
+      setStep('form');
+    }
+  }, [existingOrder]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.tableNumber || !formData.customerName) {
@@ -44,7 +66,70 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
       });
       return;
     }
+
+    if (existingOrder) {
+      // For update flow, directly add items to existing order without payment
+      handleUpdateExistingOrder();
+      return;
+    }
+
     setStep('payment');
+  };
+
+  const handleUpdateExistingOrder = async () => {
+    if (!existingOrder) return;
+    if (cart.length === 0) {
+      toast({ title: 'Cart empty', description: 'No new items to add', variant: 'destructive' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Merge items: only apply positive differences (delta) between current cart and existing order
+      const existingItems: CartItem[] = (existingOrder.items as CartItem[]) || [];
+      // clone existing items to avoid mutating original objects
+      const merged: CartItem[] = existingItems.map((it) => ({ ...it }));
+
+      // Use a map for quick lookup
+      const mergedMap = new Map(merged.map((i) => [i.id, i]));
+
+      let addedTotal = 0;
+
+      cart.forEach((cartItem) => {
+        const existing = mergedMap.get(cartItem.id);
+        const existingQty = existing?.quantity || 0;
+        // Only consider positive additions; ignore quantities that match or are less than existing
+        const delta = cartItem.quantity - existingQty;
+        if (delta > 0) {
+          if (existing) {
+            existing.quantity = existingQty + delta; // increases by delta
+          } else {
+            // brand new item for this order
+            merged.push({ ...cartItem });
+          }
+          addedTotal += cartItem.price * delta;
+        }
+      });
+
+      const newTotal = (existingOrder.totalAmount || 0) + addedTotal;
+
+      await updateDoc(doc(db, 'orders', existingOrder.id), {
+        items: merged,
+        totalAmount: newTotal,
+        updatedAt: serverTimestamp(),
+        orderStatus: 'pending', // reopen order when it's updated so it shows as updated/new
+      });
+
+      clearCart();
+      toast({ title: 'Order updated', description: 'Items added and order reopened for preparation' });
+      onClose();
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Could not update order', error);
+      toast({ title: 'Update failed', description: 'Could not add items to order', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handlePaymentSelect = (method: 'cash' | 'online') => {
@@ -145,7 +230,11 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="tableNumber">Table Number *</Label>
-              <Select value={formData.tableNumber} onValueChange={(value) => setFormData({ ...formData, tableNumber: value })}>
+              <Select
+                value={formData.tableNumber}
+                onValueChange={(value) => setFormData({ ...formData, tableNumber: value })}
+                disabled={!!existingOrder}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select table number" />
                 </SelectTrigger>
@@ -167,6 +256,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 value={formData.customerName}
                 onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                 required
+                disabled={!!existingOrder}
               />
             </div>
             
@@ -179,6 +269,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 value={formData.phoneNumber}
                 onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                 maxLength={10}
+                disabled={!!existingOrder}
               />
             </div>
             
@@ -189,16 +280,21 @@ const OrderForm: React.FC<OrderFormProps> = ({ open, onClose }) => {
                 placeholder="Any special requests..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                disabled={!!existingOrder}
               />
             </div>
-            
+
+            {existingOrder && (
+              <p className="text-sm text-muted-foreground">⚠️ Update mode: order details are locked and cannot be changed.</p>
+            )}
+
             <div className="bg-secondary/50 p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Order Total</p>
               <p className="text-2xl font-bold text-primary">Rs {getTotalAmount()}</p>
             </div>
             
             <Button type="submit" className="w-full" size="lg" disabled={submitting}>
-              Continue to Payment
+              {existingOrder ? 'Add items to order' : 'Continue to Payment'}
             </Button>
           </form>
         )}

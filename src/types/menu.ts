@@ -24,6 +24,7 @@ export interface Order {
   paymentStatus: 'pending' | 'completed';
   orderStatus: 'pending' | 'preparing' | 'ready' | 'completed';
   createdAt: string;
+  updatedAt?: string;
   paymentScreenshotName?: string;
   paymentScreenshotUrl?: string;
 }

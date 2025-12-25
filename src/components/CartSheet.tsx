@@ -1,15 +1,27 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Plus, Minus, Trash2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
+import { Order, CartItem } from '@/types/menu';
+import { toast } from '@/hooks/use-toast';
 
 interface CartSheetProps {
   onCheckout: () => void;
+  existingOrder?: Partial<Order> | null;
 }
 
-const CartSheet: React.FC<CartSheetProps> = ({ onCheckout }) => {
+const CartSheet: React.FC<CartSheetProps> = ({ onCheckout, existingOrder = null }) => {
   const { cart, updateQuantity, removeFromCart, getTotalAmount, getTotalItems } = useCart();
+
+  // Map of original quantities from existing order (if any)
+  const originalQtyMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (existingOrder?.items && Array.isArray(existingOrder.items)) {
+      (existingOrder.items as CartItem[]).forEach((it) => map.set(it.id, it.quantity || 0));
+    }
+    return map;
+  }, [existingOrder]);
 
   return (
     <Sheet>
@@ -34,19 +46,33 @@ const CartSheet: React.FC<CartSheetProps> = ({ onCheckout }) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {cart.map((item) => (
-                <div key={item.id} className="flex items-center gap-4 bg-secondary/50 p-3 rounded-lg">
-                  <div className="flex-1">
-                    <h4 className="font-medium">{item.name}</h4>
-                    <p className="text-sm text-muted-foreground">Rs {item.price} each</p>
-                  </div>
+              {cart.map((item) => {
+                const originalQty = originalQtyMap.get(item.id);
+                const isNewOrUpdated = originalQty === undefined || item.quantity > originalQty;
+                return (
+                  <div key={item.id} className="flex items-center gap-4 bg-secondary/50 p-3 rounded-lg">
+                    <div className="flex-1">
+                      <h4 className="font-medium">
+                        {item.name}{isNewOrUpdated ? ' (new)' : ''}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">Rs {item.price} each</p>
+                    </div>
                   
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                      onClick={() => {
+                        const existingQty = originalQtyMap.get(item.id);
+                        const newQty = item.quantity - 1;
+                        if (existingQty !== undefined && newQty < existingQty) {
+                          toast({ title: 'Update mode', description: 'You cannot decrease below the original quantity while updating an order.', variant: 'destructive' });
+                          return;
+                        }
+                        updateQuantity(item.id, newQty);
+                      }}
+                      disabled={originalQtyMap.get(item.id) !== undefined && item.quantity <= (originalQtyMap.get(item.id) || 0)}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
@@ -65,12 +91,21 @@ const CartSheet: React.FC<CartSheetProps> = ({ onCheckout }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => removeFromCart(item.id)}
+                    onClick={() => {
+                      if (originalQtyMap.get(item.id) !== undefined) {
+                        toast({ title: 'Update mode', description: 'Cannot remove original item while updating an order.', variant: 'destructive' });
+                        return;
+                      }
+                      removeFromCart(item.id);
+                    }}
+                    disabled={originalQtyMap.get(item.id) !== undefined}
+                    title={originalQtyMap.get(item.id) !== undefined ? 'Cannot remove original item during update' : 'Remove item'}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

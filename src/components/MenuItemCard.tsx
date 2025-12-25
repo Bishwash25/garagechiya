@@ -7,9 +7,10 @@ import { toast } from '@/hooks/use-toast';
 
 interface MenuItemCardProps {
   item: MenuItem;
+  readOnly?: boolean; // when true, hide add/cart actions (used for customer QR mode)
 }
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, readOnly }) => {
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useCart();
 
@@ -36,30 +37,36 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
       </div>
       
       <div className="flex items-center justify-between mt-4">
-        <div className="flex items-center gap-2 bg-secondary rounded-lg p-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <span className="w-8 text-center font-semibold">{quantity}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setQuantity(quantity + 1)}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-        
-        <Button onClick={handleAddToCart} size="sm" className="gap-2">
-          <ShoppingCart className="h-4 w-4" />
-          Add
-        </Button>
+        {!readOnly ? (
+          <>
+            <div className="flex items-center gap-2 bg-secondary rounded-lg p-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="w-8 text-center font-semibold">{quantity}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setQuantity(quantity + 1)}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <Button onClick={handleAddToCart} size="sm" className="gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              Add
+            </Button>
+          </>
+        ) : (
+          <div className="text-sm text-muted-foreground">Scan-only view</div>
+        )}
       </div>
     </div>
   );
